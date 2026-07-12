@@ -15,28 +15,30 @@ var cancellable = function(generator) {
             let result;
 
             try {
-                result = nextFn.call(generator, value);
+                // If cancelled, throw "Cancelled" into generator
+                if (cancelled) {
+                    result = generator.throw("Cancelled");
+                    cancelled = false;
+                } else {
+                    result = nextFn.call(generator, value);
+                }
             } catch (err) {
                 reject(err);
                 return;
             }
 
-            if (result.done) {
-                resolve(result.value);
+            const { value: yielded, done } = result;
+
+            if (done) {
+                resolve(yielded);
                 return;
             }
 
-            Promise.resolve(result.value)
-                .then(val => {
-                    if (cancelled) {
-                        step(generator.throw, "Cancelled");
-                    } else {
-                        step(generator.next, val);
-                    }
-                })
-                .catch(err => {
-                    step(generator.throw, err);
-                });
+            Promise.resolve(yielded)
+                .then(
+                    val => step(generator.next, val),
+                    err => step(generator.throw, err)
+                );
         }
 
         step(generator.next, undefined);
